@@ -1,158 +1,118 @@
+import { useEffect, useState } from "react";
 import "./styles.css";
+import { selectLatestCalibrations, useStore } from "./storage/useStore";
+import { ReleaseConsole } from "./components/ReleaseConsole";
+import { CalibrationForm } from "./components/CalibrationForm";
+import { VersionHistory } from "./components/VersionHistory";
+import { fmtDateTime } from "./components/format";
 
-const project = {
-  "id": "hxwl-05",
-  "port": 5105,
-  "title": "水族箱水质监测",
-  "subtitle": "多鱼缸水质趋势、换水和异常指标提醒",
-  "stack": "React + Vite + TypeScript + CSS",
-  "theme": [
-    "#0891b2",
-    "#16a34a",
-    "#f59e0b"
-  ],
-  "domain": "水族养护",
-  "users": [
-    "水族店员",
-    "玩家",
-    "维护师"
-  ],
-  "metrics": [
-    "pH",
-    "氨氮",
-    "硝酸盐",
-    "换水周期"
-  ],
-  "filters": [
-    "草缸",
-    "海缸",
-    "三湖缸",
-    "繁殖缸"
-  ],
-  "fields": [
-    "pH",
-    "氨氮",
-    "亚硝酸盐",
-    "硝酸盐",
-    "硬度",
-    "温度",
-    "换水量"
-  ],
-  "records": [
-    [
-      "草缸A",
-      "pH 6.8",
-      "稳定",
-      "硝酸盐18ppm，计划周末换水30%"
-    ],
-    [
-      "海缸B",
-      "pH 8.1",
-      "关注",
-      "钙硬度偏低，需复测"
-    ],
-    [
-      "繁殖缸C",
-      "pH 7.2",
-      "异常",
-      "亚硝酸盐升高，停止投喂"
-    ]
-  ]
-};
+type Tab = "release" | "calibrate" | "versions";
 
-const statusColors = ["status-ok", "status-watch", "status-danger"];
+const TABS: { key: Tab; label: string }[] = [
+  { key: "release", label: "补水放行台" },
+  { key: "calibrate", label: "校准登记" },
+  { key: "versions", label: "版本档案" },
+];
 
-function MetricCard({ label, value, index }: { label: string; value: string; index: number }) {
-  return (
-    <article className="metric-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <i className={statusColors[index % statusColors.length]} />
-    </article>
-  );
+interface Notice {
+  id: number;
+  kind: "ok" | "err";
+  text: string;
 }
 
 function App() {
-  const values = project.metrics.map((metric: string, index: number) => {
-    const base = [84, 12, 31, 7][index % 4];
-    return String(base + index * 3);
-  });
+  const {
+    state,
+    registerCalibration,
+    correctCalibration,
+    requestTopOff,
+    resetToSeed,
+  } = useStore();
+  const [tab, setTab] = useState<Tab>("release");
+  const [now, setNow] = useState(() => new Date());
+  const [notices, setNotices] = useState<Notice[]>([]);
+
+  // 放行评估依赖当前时间（过期判定），每 30 秒刷新一次
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const latest = selectLatestCalibrations(state);
+
+  function notify(kind: "ok" | "err", text: string) {
+    const id = Date.now() + Math.random();
+    setNotices((prev) => [...prev, { id, kind, text }]);
+    setTimeout(() => {
+      setNotices((prev) => prev.filter((n) => n.id !== id));
+    }, 6000);
+  }
 
   return (
     <main className="app-shell">
       <section className="hero">
         <div>
-          <p className="eyebrow">{project.id} · port {project.port}</p>
-          <h1>{project.title}</h1>
-          <p className="subtitle">{project.subtitle}</p>
+          <p className="eyebrow">hxwl-05 · 海水缸盐度校准与补水放行台</p>
+          <h1>盐度校准 · 补水放行</h1>
+          <p className="subtitle">
+            每缸登记盐度、温度、桶余量和校准时间；规则命中即禁止补水，
+            补水量按盐度差估算，超桶余量整批退回；确认即冻结版本，修正写原因另存旧值。
+          </p>
         </div>
         <div className="stack-card">
-          <span>技术栈</span>
-          <strong>{project.stack}</strong>
+          <span>当前时间（过期判定基准）</span>
+          <strong>{fmtDateTime(now.toISOString())}</strong>
+          <button
+            className="reset-btn"
+            onClick={() => {
+              resetToSeed();
+              notify("ok", "已恢复演示数据");
+            }}
+          >
+            恢复演示数据
+          </button>
         </div>
       </section>
 
-      <section className="metrics-grid">
-        {project.metrics.map((metric: string, index: number) => (
-          <MetricCard key={metric} label={metric} value={values[index]} index={index} />
+      <nav className="tabs">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            className={tab === t.key ? "tab active" : "tab"}
+            onClick={() => setTab(t.key)}
+          >
+            {t.label}
+          </button>
         ))}
-      </section>
+      </nav>
 
-      <section className="workspace">
-        <aside className="panel narrow">
-          <h2>角色</h2>
-          <div className="chips">
-            {project.users.map((user: string) => (
-              <span key={user}>{user}</span>
-            ))}
+      <div className="notice-stack">
+        {notices.map((n) => (
+          <div key={n.id} className={`notice ${n.kind === "ok" ? "notice-ok" : "notice-err"}`}>
+            {n.text}
           </div>
-          <h2>筛选</h2>
-          <div className="chips muted">
-            {project.filters.map((filter: string) => (
-              <button key={filter}>{filter}</button>
-            ))}
-          </div>
-        </aside>
+        ))}
+      </div>
 
-        <section className="panel">
-          <div className="section-heading">
-            <div>
-              <p>{project.domain}</p>
-              <h2>记录字段</h2>
-            </div>
-            <button className="primary-action">新增记录</button>
-          </div>
-          <div className="field-grid">
-            {project.fields.map((field: string) => (
-              <label key={field}>
-                <span>{field}</span>
-                <input placeholder={"填写" + field} />
-              </label>
-            ))}
-          </div>
-        </section>
-      </section>
+      {tab === "release" && (
+        <ReleaseConsole
+          state={state}
+          latest={latest}
+          now={now}
+          onRequestTopOff={requestTopOff}
+          onNotify={notify}
+        />
+      )}
+      {tab === "calibrate" && (
+        <CalibrationForm state={state} onRegister={registerCalibration} onNotify={notify} />
+      )}
+      {tab === "versions" && (
+        <VersionHistory state={state} onCorrect={correctCalibration} onNotify={notify} />
+      )}
 
-      <section className="records panel">
-        <div className="section-heading">
-          <div>
-            <p>示例数据</p>
-            <h2>近期记录</h2>
-          </div>
-          <button>导出摘要</button>
-        </div>
-        <div className="record-list">
-          {project.records.map((record: string[], index: number) => (
-            <article key={record.join("-")} className="record-card">
-              <div className="record-index">{String(index + 1).padStart(2, "0")}</div>
-              <div>
-                <h3>{record[0]}</h3>
-                <p>{record.slice(1).join(" · ")}</p>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
+      <footer className="footnote">
+        数据、计算、存储、页面分层：data（结构/种子）· domain（规则引擎）· storage（localStorage 仓库）· components（页面）
+      </footer>
     </main>
   );
 }
